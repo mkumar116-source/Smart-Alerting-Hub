@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}API Keys — Smart Alerting Hub{% endblock %}
+{% block content %}
+
+<h2>Generate a tool's API key</h2>
+{% if error %}<div class="banner">{{ error }}</div>{% endif %}
+{% if new_key %}
+<div class="banner" style="border-color: var(--info); color: var(--info);">
+  New key (shown once — copy it into that tool's config now):<br>
+  <code>{{ new_key }}</code>
+</div>
+{% endif %}
+
+<form method="post">
+  <input type="text" name="tool_name" placeholder="tool name, e.g. write-guard" required>
+  <button type="submit">Generate key</button>
+</form>
+
+<h2 style="margin-top: 32px;">Existing keys</h2>
+<table>
+  <tr><th>Tool</th><th>Active</th><th>Created (UTC)</th></tr>
+  {% for k in keys %}
+  <tr>
+    <td>{{ k.tool_name }}</td>
+    <td>{{ "yes" if k.active else "no" }}</td>
+    <td class="muted">{{ k.created_at }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="muted">No keys yet.</td></tr>
+  {% endfor %}
+</table>
+
+{% endblock %}

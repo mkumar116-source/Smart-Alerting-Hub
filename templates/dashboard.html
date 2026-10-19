@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Smart Alerting Hub{% endblock %}
+{% block content %}
+
+{% if not telegram_configured %}
+<div class="banner">Telegram isn't configured yet — set bot_token and chat_ids in data/config.json. Alerts are still logged here, just not delivered.</div>
+{% endif %}
+
+<form class="filters" method="get">
+  <select name="tool" onchange="this.form.submit()">
+    <option value="">All tools</option>
+    {% for t in tools %}
+    <option value="{{ t }}" {% if t == current_tool %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <select name="severity" onchange="this.form.submit()">
+    <option value="">All severities</option>
+    {% for s in severities %}
+    <option value="{{ s }}" {% if s == current_severity %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<table>
+  <tr><th>Last seen (UTC)</th><th>Tool</th><th>Severity</th><th>Alert</th><th>Message</th><th>Count</th></tr>
+  {% for a in alerts %}
+  <tr>
+    <td class="muted">{{ a.last_seen_at }}</td>
+    <td>{{ a.tool_name }}</td>
+    <td class="sev-{{ a.severity }}">{{ a.severity }}</td>
+    <td>{{ a.alert_key }}</td>
+    <td>{{ a.message }}{% if a.link %} — <a href="{{ a.link }}">link</a>{% endif %}</td>
+    <td>{{ a.count }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No alerts yet.</td></tr>
+  {% endfor %}
+</table>
+
+{% endblock %}

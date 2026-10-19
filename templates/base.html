@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{% block title %}Smart Alerting Hub{% endblock %}</title>
+<style>
+  :root {
+    --bg: #121212; --panel: #1e1e1e; --border: #333; --text: #e0e0e0; --muted: #999;
+    --info: #4da3ff; --warning: #e0a800; --critical: #ff4d4f; --accent: #4da3ff;
+  }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; }
+  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 14px 24px; }
+  header h1 { margin: 0; font-size: 18px; }
+  header nav a { color: var(--accent); margin-right: 16px; text-decoration: none; font-size: 14px; }
+  main { padding: 24px; max-width: 1000px; margin: 0 auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 6px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--muted); font-weight: 600; }
+  .sev-info { color: var(--info); }
+  .sev-warning { color: var(--warning); }
+  .sev-critical { color: var(--critical); font-weight: 600; }
+  .filters { margin-bottom: 16px; }
+  select, input, button { background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 4px; }
+  button { cursor: pointer; }
+  .banner { background: #3a2a00; border: 1px solid var(--warning); color: var(--warning); padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Smart Alerting Hub</h1>
+  <nav>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/admin/keys">API Keys</a>
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>
