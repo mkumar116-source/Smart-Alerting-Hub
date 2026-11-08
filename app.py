@@ -1,6 +1,8 @@
 """SAH — Smart Alerting Hub. Central alert receiver/router for Kumar's Flask tools."""
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from werkzeug.serving import WSGIRequestHandler
 
+import auth
 import db
 import telegram_bot
 
@@ -10,9 +12,19 @@ MAX_MESSAGE_LEN = 2000
 MAX_ALERT_KEY_LEN = 100
 
 
-@app.before_request
-def _startup_once():
-    pass  # init happens at import time below
+@app.after_request
+def _security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    return response
+
+
+class QuietRequestHandler(WSGIRequestHandler):
+    """Drops the Flask/Python version details from the Server header."""
+    server_version = "Werkzeug"
+    sys_version = ""
 
 
 def _client_ip():
@@ -88,8 +100,49 @@ def api_alert_test():
     return _handle_alert(is_test=True)
 
 
+@app.route("/set_password", methods=["GET", "POST"])
+def set_password():
+    if auth.password_is_set():
+        return redirect(url_for("login"))
+    error = None
+    if request.method == "POST":
+        pw = request.form.get("password") or ""
+        pw2 = request.form.get("password2") or ""
+        if len(pw) < 8:
+            error = "Password must be at least 8 characters"
+        elif pw != pw2:
+            error = "Passwords do not match"
+        else:
+            auth.set_password(pw)
+            session["sah_logged_in"] = True
+            return redirect(url_for("dashboard"))
+    return render_template("set_password.html", error=error)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not auth.password_is_set():
+        return redirect(url_for("set_password"))
+    error = None
+    if request.method == "POST":
+        pw = request.form.get("password") or ""
+        if auth.check_password(pw):
+            session["sah_logged_in"] = True
+            next_url = request.form.get("next") or request.args.get("next") or url_for("dashboard")
+            return redirect(next_url)
+        error = "Incorrect password"
+    return render_template("login.html", error=error, next=request.args.get("next", ""))
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop("sah_logged_in", None)
+    return redirect(url_for("login"))
+
+
 @app.route("/dashboard", methods=["GET"])
 @app.route("/", methods=["GET"])
+@auth.login_required
 def dashboard():
     tool_filter = request.args.get("tool") or None
     severity_filter = request.args.get("severity") or None
@@ -107,6 +160,7 @@ def dashboard():
 
 
 @app.route("/admin/keys", methods=["GET", "POST"])
+@auth.login_required
 def admin_keys():
     new_key = None
     error = None
@@ -126,4 +180,5 @@ def admin_keys():
 if __name__ == "__main__":
     db.init_db()
     telegram_bot.ensure_default_config()
-    app.run(host="0.0.0.0", port=8512, debug=False)
+    app.secret_key = auth.get_secret_key()
+    app.run(host="0.0.0.0", port=8512, debug=False, request_handler=QuietRequestHandler)

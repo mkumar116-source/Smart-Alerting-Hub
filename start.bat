@@ -12,6 +12,11 @@ echo Installing / checking requirements...
 "venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
 "venv\Scripts\python.exe" -m pip install --quiet -r requirements.txt || goto :error
 
+if exist "data" (
+    echo Restricting data\ folder permissions to this account...
+    icacls "data" /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F" >nul 2>&1
+)
+
 echo Starting Smart Alerting Hub...
 echo Open http://localhost:8512 in your browser.
 start "" powershell -NoProfile -WindowStyle Hidden -File "D:\Flask Tools\common\open_when_ready.ps1" -Port 8512

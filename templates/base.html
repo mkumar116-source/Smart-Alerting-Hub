@@ -9,9 +9,11 @@
     --info: #4da3ff; --warning: #e0a800; --critical: #ff4d4f; --accent: #4da3ff;
   }
   body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; }
-  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 14px 24px; }
+  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
   header h1 { margin: 0; font-size: 18px; }
   header nav a { color: var(--accent); margin-right: 16px; text-decoration: none; font-size: 14px; }
+  header form { margin: 0; }
+  header form button { font-size: 13px; padding: 4px 10px; }
   main { padding: 24px; max-width: 1000px; margin: 0 auto; }
   table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 6px; overflow: hidden; }
   th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
@@ -28,11 +30,16 @@
 </head>
 <body>
 <header>
-  <h1>Smart Alerting Hub</h1>
-  <nav>
-    <a href="/dashboard">Dashboard</a>
-    <a href="/admin/keys">API Keys</a>
-  </nav>
+  <div>
+    <h1 style="display:inline;">Smart Alerting Hub</h1>
+    <nav style="display:inline; margin-left:16px;">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/admin/keys">API Keys</a>
+    </nav>
+  </div>
+  {% if session.sah_logged_in %}
+  <form method="post" action="/logout"><button type="submit">Log out</button></form>
+  {% endif %}
 </header>
 <main>
 {% block content %}{% endblock %}
