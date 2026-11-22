@@ -19,21 +19,47 @@
     <option value="{{ s }}" {% if s == current_severity %}selected{% endif %}>{{ s }}</option>
     {% endfor %}
   </select>
+  <label style="font-size:13px; color:var(--muted);">
+    <input type="checkbox" name="show_resolved" value="1" {% if show_resolved %}checked{% endif %} onchange="this.form.submit()">
+    Show resolved
+  </label>
 </form>
 
 <table>
-  <tr><th>Last seen (UTC)</th><th>Tool</th><th>Severity</th><th>Alert</th><th>Message</th><th>Count</th></tr>
+  <tr><th>Last seen (UTC)</th><th>Tool</th><th>Severity</th><th>Alert</th><th>Message</th><th>Count</th><th>Snooze</th></tr>
   {% for a in alerts %}
-  <tr>
+  <tr{% if a.resolved_at %} class="resolved-row"{% endif %}>
     <td class="muted">{{ a.last_seen_at }}</td>
     <td>{{ a.tool_name }}</td>
     <td class="sev-{{ a.severity }}">{{ a.severity }}</td>
-    <td>{{ a.alert_key }}</td>
+    <td>
+      {{ a.alert_key }}
+      {% if a.resolved_at %}<span class="badge">resolved</span>{% endif %}
+      {% if a.alert_key in snoozed %}<span class="badge">snoozed</span>{% endif %}
+    </td>
     <td>{{ a.message }}{% if a.link %} — <a href="{{ a.link }}">link</a>{% endif %}</td>
     <td>{{ a.count }}</td>
+    <td>
+      {% if a.alert_key in snoozed %}
+      <form class="inline-form" method="post" action="/unsnooze">
+        <input type="hidden" name="alert_key" value="{{ a.alert_key }}">
+        <button type="submit">Unsnooze</button>
+      </form>
+      {% else %}
+      <form class="inline-form" method="post" action="/snooze">
+        <input type="hidden" name="alert_key" value="{{ a.alert_key }}">
+        <select name="hours">
+          {% for h in snooze_choices %}
+          <option value="{{ h }}">{{ h }}h</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Snooze</button>
+      </form>
+      {% endif %}
+    </td>
   </tr>
   {% else %}
-  <tr><td colspan="6" class="muted">No alerts yet.</td></tr>
+  <tr><td colspan="7" class="muted">No alerts yet.</td></tr>
   {% endfor %}
 </table>
 

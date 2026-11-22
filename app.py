@@ -1,9 +1,13 @@
 """SAH — Smart Alerting Hub. Central alert receiver/router for Kumar's Flask tools."""
+import datetime
+
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 from werkzeug.serving import WSGIRequestHandler
 
 import auth
 import db
+import digest
+import settings as settings_mod
 import telegram_bot
 
 app = Flask(__name__)
@@ -11,13 +15,17 @@ app = Flask(__name__)
 MAX_MESSAGE_LEN = 2000
 MAX_ALERT_KEY_LEN = 100
 
+SNOOZE_CHOICES_HOURS = (2, 8, 24)
+
 
 @app.after_request
 def _security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    )
     return response
 
 
@@ -29,6 +37,23 @@ class QuietRequestHandler(WSGIRequestHandler):
 
 def _client_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr)
+
+
+def _deliver(tool_name, severity, message, link):
+    """Decides whether/how a freshly-accepted (non-dedup) alert reaches Telegram:
+    critical -> always immediate. Otherwise gated by settings.should_send_telegram
+    (severity floor + quiet hours), then either queued for the digest or sent
+    immediately depending on settings.digest_enabled."""
+    s = settings_mod.get_settings()
+    if severity == "critical":
+        telegram_bot.send_alert(tool_name, severity, message, link)
+        return
+    if not settings_mod.should_send_telegram(severity, s):
+        return
+    if s.get("digest_enabled"):
+        digest.queue(tool_name, severity, message, link)
+    else:
+        telegram_bot.send_alert(tool_name, severity, message, link)
 
 
 @app.route("/health", methods=["GET"])
@@ -76,16 +101,35 @@ def _handle_alert(is_test=False):
         db.log_audit(ip, tool_name, "accepted", "test")
         return jsonify({"status": "sent", "dedup": False})
 
+    if db.is_snoozed(payload["alert_key"]):
+        db.log_audit(ip, tool_name, "snoozed", None)
+        # still record it so the dashboard/count reflects reality, just no Telegram
+        existing = db.find_recent_alert(tool_name, payload["alert_key"], db.get_cooldown_minutes(payload["alert_key"]))
+        if existing:
+            db.bump_alert(existing["id"])
+        else:
+            db.insert_alert(tool_name, payload["alert_key"], payload["severity"],
+                             payload["message"], payload["link"])
+        return jsonify({"status": "snoozed", "dedup": bool(existing)})
+
     cooldown = db.get_cooldown_minutes(payload["alert_key"])
     existing = db.find_recent_alert(tool_name, payload["alert_key"], cooldown)
     if existing:
-        db.bump_alert(existing["id"])
+        updated = db.bump_alert(existing["id"])
         db.log_audit(ip, tool_name, "deduped", None)
-        return jsonify({"status": "deduped", "dedup": True, "count": existing["count"] + 1})
+        s = settings_mod.get_settings()
+        if settings_mod.should_send_telegram(updated["severity"], s) and \
+                db.check_escalation(updated, s["escalation_count"], s["escalation_window_minutes"]):
+            telegram_bot.send_alert(
+                tool_name, updated["severity"],
+                f"(escalating — {updated['count']}x so far) {updated['message']}",
+                updated["link"],
+            )
+        return jsonify({"status": "deduped", "dedup": True, "count": updated["count"]})
 
     db.insert_alert(tool_name, payload["alert_key"], payload["severity"],
                      payload["message"], payload["link"])
-    telegram_bot.send_alert(tool_name, payload["severity"], payload["message"], payload["link"])
+    _deliver(tool_name, payload["severity"], payload["message"], payload["link"])
     db.log_audit(ip, tool_name, "accepted", None)
     return jsonify({"status": "sent", "dedup": False})
 
@@ -98,6 +142,26 @@ def api_alert():
 @app.route("/api/alert/test", methods=["POST"])
 def api_alert_test():
     return _handle_alert(is_test=True)
+
+
+@app.route("/api/alert/resolve", methods=["POST"])
+def api_alert_resolve():
+    api_key = request.headers.get("X-Hub-Key")
+    tool_name = db.validate_api_key(api_key)
+    ip = _client_ip()
+    if not tool_name:
+        db.log_audit(ip, None, "rejected", "invalid_api_key")
+        return jsonify({"error": "invalid or missing X-Hub-Key"}), 401
+
+    data = request.get_json(silent=True) or {}
+    alert_key = data.get("alert_key", "")
+    if not alert_key or len(alert_key) > MAX_ALERT_KEY_LEN:
+        db.log_audit(ip, tool_name, "rejected", "invalid alert_key")
+        return jsonify({"error": "invalid alert_key"}), 400
+
+    found = db.resolve_alert(tool_name, alert_key)
+    db.log_audit(ip, tool_name, "resolved" if found else "resolve_noop", None)
+    return jsonify({"status": "resolved" if found else "no_open_alert"})
 
 
 @app.route("/set_password", methods=["GET", "POST"])
@@ -146,8 +210,10 @@ def logout():
 def dashboard():
     tool_filter = request.args.get("tool") or None
     severity_filter = request.args.get("severity") or None
-    alerts = db.list_alerts(tool_name=tool_filter, severity=severity_filter)
+    show_resolved = request.args.get("show_resolved") == "1"
+    alerts = db.list_alerts(tool_name=tool_filter, severity=severity_filter, include_resolved=show_resolved)
     tools = db.list_tool_names()
+    snoozed = db.list_snoozed_keys()
     return render_template(
         "dashboard.html",
         alerts=alerts,
@@ -155,8 +221,34 @@ def dashboard():
         severities=db.VALID_SEVERITIES,
         current_tool=tool_filter,
         current_severity=severity_filter,
+        show_resolved=show_resolved,
         telegram_configured=telegram_bot.is_configured(),
+        snoozed=snoozed,
+        snooze_choices=SNOOZE_CHOICES_HOURS,
     )
+
+
+@app.route("/snooze", methods=["POST"])
+@auth.login_required
+def snooze():
+    alert_key = request.form.get("alert_key", "")
+    try:
+        hours = int(request.form.get("hours", "0"))
+    except ValueError:
+        hours = 0
+    if alert_key and hours in SNOOZE_CHOICES_HOURS:
+        until = (datetime.datetime.utcnow() + datetime.timedelta(hours=hours)).isoformat()
+        db.set_snooze(alert_key, until)
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/unsnooze", methods=["POST"])
+@auth.login_required
+def unsnooze():
+    alert_key = request.form.get("alert_key", "")
+    if alert_key:
+        db.set_snooze(alert_key, None)
+    return redirect(request.referrer or url_for("dashboard"))
 
 
 @app.route("/admin/keys", methods=["GET", "POST"])
@@ -177,8 +269,35 @@ def admin_keys():
     return render_template("admin.html", keys=keys, new_key=new_key, error=error)
 
 
+@app.route("/settings", methods=["GET", "POST"])
+@auth.login_required
+def settings_page():
+    error = None
+    if request.method == "POST":
+        try:
+            new_values = {
+                "telegram_min_severity": request.form.get("telegram_min_severity", "info"),
+                "quiet_hours_enabled": request.form.get("quiet_hours_enabled") == "on",
+                "quiet_start": request.form.get("quiet_start", "23:00"),
+                "quiet_end": request.form.get("quiet_end", "07:00"),
+                "escalation_count": int(request.form.get("escalation_count", 5)),
+                "escalation_window_minutes": int(request.form.get("escalation_window_minutes", 15)),
+                "digest_enabled": request.form.get("digest_enabled") == "on",
+                "digest_window_seconds": int(request.form.get("digest_window_seconds", 20)),
+            }
+            if new_values["telegram_min_severity"] not in db.VALID_SEVERITIES:
+                raise ValueError("invalid severity")
+            settings_mod.save_settings(new_values)
+        except (ValueError, TypeError) as e:
+            error = f"Invalid value: {e}"
+    s = settings_mod.get_settings()
+    return render_template("settings.html", s=s, severities=db.VALID_SEVERITIES, error=error)
+
+
 if __name__ == "__main__":
     db.init_db()
     telegram_bot.ensure_default_config()
+    settings_mod.ensure_settings_defaults()
+    digest.start_digest_thread()
     app.secret_key = auth.get_secret_key()
     app.run(host="0.0.0.0", port=8512, debug=False, request_handler=QuietRequestHandler)

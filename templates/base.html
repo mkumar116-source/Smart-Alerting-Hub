@@ -26,6 +26,12 @@
   button { cursor: pointer; }
   .banner { background: #3a2a00; border: 1px solid var(--warning); color: var(--warning); padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
   .muted { color: var(--muted); font-size: 13px; }
+  .resolved-row { opacity: 0.5; }
+  .resolved-row td { text-decoration: line-through; }
+  .badge { display: inline-block; background: var(--border); color: var(--text); border-radius: 3px; padding: 1px 6px; font-size: 11px; margin-left: 6px; text-decoration: none; }
+  .inline-form { display: inline; }
+  .settings-form label { display: block; margin: 14px 0 4px; font-size: 13px; color: var(--muted); }
+  .settings-form .row { margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -35,6 +41,7 @@
     <nav style="display:inline; margin-left:16px;">
       <a href="/dashboard">Dashboard</a>
       <a href="/admin/keys">API Keys</a>
+      <a href="/settings">Settings</a>
     </nav>
   </div>
   {% if session.sah_logged_in %}

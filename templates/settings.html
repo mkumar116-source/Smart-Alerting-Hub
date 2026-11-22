@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Settings — Smart Alerting Hub{% endblock %}
+{% block content %}
+<h2>Delivery settings</h2>
+{% if error %}<div class="banner">{{ error }}</div>{% endif %}
+
+<form method="post" class="settings-form" style="max-width:480px;">
+  <label>Send to Telegram from this severity and up (critical always sends regardless)</label>
+  <div class="row">
+    <select name="telegram_min_severity">
+      {% for sev in severities %}
+      <option value="{{ sev }}" {% if sev == s.telegram_min_severity %}selected{% endif %}>{{ sev }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <label><input type="checkbox" name="quiet_hours_enabled" {% if s.quiet_hours_enabled %}checked{% endif %}> Quiet hours (suppress non-critical Telegram pushes; still logged on dashboard)</label>
+  <div class="row">
+    From <input type="time" name="quiet_start" value="{{ s.quiet_start }}">
+    to <input type="time" name="quiet_end" value="{{ s.quiet_end }}">
+  </div>
+
+  <label>Escalate (re-notify even inside cooldown) if an alert repeats this many times...</label>
+  <div class="row"><input type="number" name="escalation_count" value="{{ s.escalation_count }}" min="1" style="width:80px;"></div>
+
+  <label>...within this many minutes</label>
+  <div class="row"><input type="number" name="escalation_window_minutes" value="{{ s.escalation_window_minutes }}" min="1" style="width:80px;"></div>
+
+  <label><input type="checkbox" name="digest_enabled" {% if s.digest_enabled %}checked{% endif %}> Batch non-critical alerts into digest messages (critical always sends immediately)</label>
+  <div class="row">
+    Window: <input type="number" name="digest_window_seconds" value="{{ s.digest_window_seconds }}" min="1" style="width:80px;"> seconds
+  </div>
+
+  <p style="margin-top:20px;"><button type="submit">Save</button></p>
+</form>
+{% endblock %}
