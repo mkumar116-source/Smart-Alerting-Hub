@@ -211,7 +211,9 @@ def dashboard():
     tool_filter = request.args.get("tool") or None
     severity_filter = request.args.get("severity") or None
     show_resolved = request.args.get("show_resolved") == "1"
-    alerts = db.list_alerts(tool_name=tool_filter, severity=severity_filter, include_resolved=show_resolved)
+    search_q = (request.args.get("q") or "").strip() or None
+    alerts = db.list_alerts(tool_name=tool_filter, severity=severity_filter,
+                             include_resolved=show_resolved, search=search_q)
     tools = db.list_tool_names()
     snoozed = db.list_snoozed_keys()
     return render_template(
@@ -222,6 +224,7 @@ def dashboard():
         current_tool=tool_filter,
         current_severity=severity_filter,
         show_resolved=show_resolved,
+        search_q=search_q or "",
         telegram_configured=telegram_bot.is_configured(),
         snoozed=snoozed,
         snooze_choices=SNOOZE_CHOICES_HOURS,

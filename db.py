@@ -299,7 +299,7 @@ def log_audit(source_ip, tool_name, result, reason=None):
 
 # ---------- Dashboard queries ----------
 
-def list_alerts(tool_name=None, severity=None, include_test=False, include_resolved=False, limit=200):
+def list_alerts(tool_name=None, severity=None, include_test=False, include_resolved=False, search=None, limit=200):
     conn = get_db()
     query = "SELECT * FROM alerts WHERE 1=1"
     params = []
@@ -313,6 +313,11 @@ def list_alerts(tool_name=None, severity=None, include_test=False, include_resol
     if severity:
         query += " AND severity = ?"
         params.append(severity)
+    if search:
+        query += " AND (message LIKE ? ESCAPE '\\' OR alert_key LIKE ? ESCAPE '\\')"
+        like = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        params.append(like)
+        params.append(like)
     query += " ORDER BY last_seen_at DESC LIMIT ?"
     params.append(limit)
     rows = conn.execute(query, params).fetchall()

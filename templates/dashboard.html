@@ -19,6 +19,9 @@
     <option value="{{ s }}" {% if s == current_severity %}selected{% endif %}>{{ s }}</option>
     {% endfor %}
   </select>
+  <input type="search" name="q" placeholder="Search message/alert key..." value="{{ search_q }}" style="min-width:220px;">
+  <button type="submit">Search</button>
+  {% if search_q %}<a href="{{ url_for('dashboard', tool=current_tool, severity=current_severity, show_resolved=(1 if show_resolved else None)) }}" class="muted">Clear</a>{% endif %}
   <label style="font-size:13px; color:var(--muted);">
     <input type="checkbox" name="show_resolved" value="1" {% if show_resolved %}checked{% endif %} onchange="this.form.submit()">
     Show resolved
